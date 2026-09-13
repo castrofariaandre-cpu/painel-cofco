@@ -8,8 +8,15 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_
 // The one account allowed to manage which unit each user can access.
 const ADMIN_EMAIL = "castrofaria.andre@gmail.com";
 
-// Maps a profile's assigned unit to the dashboard file it opens.
+// Maps a profile's assigned unit to the dashboard URL it opens.
+// One dashboard file now serves both units — the unit picks its data via
+// the ?unit= query param (only honored for the admin; everyone else's unit
+// comes from their own profile, enforced server-side by RLS).
+const UNIT_LABELS = {
+  sebastianopolis: "Sebastianópolis",
+  meridiano: "Meridiano",
+};
 const UNIT_PAGES = {
-  sebastianopolis: "painel.html",
-  meridiano: "painel_meridiano.html",
+  sebastianopolis: "painel.html?unit=sebastianopolis",
+  meridiano: "painel.html?unit=meridiano",
 };

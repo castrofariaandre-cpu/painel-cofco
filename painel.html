@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>COFCO INTL · Manutenção · SEB</title>
+<title>COFCO INTL · Manutenção</title>
 <style>
 :root{
   --bg:#080e1a;--s1:#0f1825;--s2:#162030;--border:#1e2e45;--bord2:#263850;
@@ -184,7 +184,7 @@ body.leitura .stage-pill span:last-child{display:none}
 <header>
   <div>
     <div class="hd-logo">COFCO <span>INTL</span> · Manutenção</div>
-    <div class="hd-unit">Un. Sebastianópolis</div>
+    <div class="hd-unit" id="hd-unit">Un.</div>
   </div>
   <div class="hd-btns">
     <div class="pill" onclick="openUpload()">📂 Atualizar CSV <span id="save-dot"></span></div>
@@ -204,28 +204,45 @@ body.leitura .stage-pill span:last-child{display:none}
 <script src="config.js"></script>
 <script>
 (function(){
-  const EXPECTED_UNIT = 'sebastianopolis';
   const LOGIN_URL = new URL('index.html', window.location.href).toString();
   const APP_URL = new URL('app.html', window.location.href).toString();
 
-  (async () => {
+  function applyUnitChrome(unit) {
+    const label = UNIT_LABELS[unit] || '';
+    document.title = 'COFCO INTL · Manutenção · ' + label;
+    const hd = document.getElementById('hd-unit'); if (hd) hd.textContent = 'Un. ' + label;
+    const up = document.getElementById('upload-unit-label'); if (up) up.textContent = 'Un. ' + label;
+  }
+
+  // Resolvida antes de qualquer leitura/gravação de dados — o resto do
+  // script aguarda essa promise (window.authReady) para saber a unidade ativa.
+  window.authReady = (async () => {
     const { data } = await supabaseClient.auth.getSession();
     const session = data.session;
     if (!session) { window.location.replace(LOGIN_URL); return; }
+    const isAdmin = session.user.email === ADMIN_EMAIL;
 
-    if (session.user.email !== ADMIN_EMAIL) {
-      const { data: profile, error } = await supabaseClient
-        .from('profiles')
-        .select('unit')
-        .eq('id', session.user.id)
-        .single();
-      if (error || !profile || profile.unit !== EXPECTED_UNIT) {
-        window.location.replace(APP_URL);
-        return;
+    if (window.MODO_LEITURA) {
+      // Cópia de leitura: a unidade vem embutida no arquivo, não da URL.
+      const unit = (window.DADOS_EMBUTIDOS || {}).unit;
+      if (!isAdmin) {
+        const { data: profile, error } = await supabaseClient
+          .from('profiles').select('unit').eq('id', session.user.id).single();
+        if (error || !profile || profile.unit !== unit) { window.location.replace(APP_URL); return; }
       }
+      window.ACTIVE_UNIT = unit;
+    } else if (isAdmin) {
+      const requested = new URLSearchParams(window.location.search).get('unit');
+      window.ACTIVE_UNIT = UNIT_LABELS[requested] ? requested : 'sebastianopolis';
+    } else {
+      const { data: profile, error } = await supabaseClient
+        .from('profiles').select('unit').eq('id', session.user.id).single();
+      if (error || !profile || !UNIT_LABELS[profile.unit]) { window.location.replace(APP_URL); return; }
+      window.ACTIVE_UNIT = profile.unit;
     }
 
     document.getElementById('user-email-pill').textContent = session.user.email;
+    applyUnitChrome(window.ACTIVE_UNIT);
     document.documentElement.classList.remove('auth-pending');
   })();
 
@@ -383,7 +400,7 @@ body.leitura .stage-pill span:last-child{display:none}
     <div style="font-size:48px;margin-bottom:12px">📋</div>
     <h2>Carregar CSV de OS</h2>
     <p>Clique ou arraste o arquivo exportado do sistema</p>
-    <p style="margin-top:8px;font-size:11px;color:var(--muted)">Apenas OS da unidade <strong>Un. Sebastianópolis</strong> serão carregadas</p>
+    <p style="margin-top:8px;font-size:11px;color:var(--muted)">Apenas OS da unidade <strong id="upload-unit-label">Un.</strong> serão carregadas</p>
     <input type="file" id="upload-file-input" accept=".csv,.txt">
   </div>
   <button class="btn-cancel-upload" onclick="closeUpload()">Cancelar</button>
@@ -465,10 +482,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 </script>
 <script>
 // ── CONSTANTS ──
-const UNIT_FILTER = 'Sebast';
+// Prefixo usado para casar a coluna "Setor" do CSV com a unidade ativa.
+const UNIT_FILTER_MAP = { sebastianopolis: 'Sebast', meridiano: 'Meridiano' };
 const DRIVE_CSV_ID = '1ZGGPy6OT0rcTLJVFKgRh4u6xNLDS4kaw';
 const DRIVE_CSV_URL = 'https://drive.google.com/uc?export=download&id=' + DRIVE_CSV_ID;
-const SK = s => 'cofco_seb_' + s;
 // Fluxo de manutenção INTERNA (oficina)
 const STAGES_INT = [
   {id:'diag',    label:'Diagnóstico',    color:'#3b82f6'},
@@ -536,7 +553,7 @@ function editStageSince(id) {
     if(!m){ alert('Data inválida. Use o formato DD/MM/AAAA.'); return; }
     r.stageSince=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
   }
-  saveAll(); renderAcomp();
+  persistAcompUpsert(r); renderAcomp();
 }
 
 // Valores que só podem ter vindo da importação antiga, com colunas deslocadas:
@@ -737,7 +754,7 @@ function lerQuadroExcel(ev) {
     const prioDe=v=>{const t=String(v||'').trim().toLowerCase();
       return t.startsWith('a')?'alta':t.startsWith('m')?'media':t.startsWith('b')?'baixa':null;};
 
-    let atualizadas=0, fases=0, semLinha=[], faseInvalida=[];
+    let atualizadas=0, fases=0, semLinha=[], faseInvalida=[]; const tocadas=[];
     for(let i=1;i<linhas.length;i++){
       const L=linhas[i]; const eq=String(L[gi('EQUIP')]||'').trim();
       if(!eq) continue;
@@ -759,9 +776,9 @@ function lerQuadroExcel(ev) {
         const v=String(L[gi(col)]||'').trim();
         if(v!==String(r[campo]||'').trim()){ r[campo]=v; mudou=true; }
       });
-      if(mudou) atualizadas++;
+      if(mudou){ atualizadas++; tocadas.push(r); }
     }
-    saveAll(); renderAcomp();
+    persistAcompBulkUpsert(tocadas); renderAcomp();
     let msg=atualizadas+' linha(s) atualizada(s), sendo '+fases+' com mudança de fase.';
     if(semLinha.length) msg+='\n\n'+semLinha.length+' frota(s) da planilha não estão no quadro ativo: '+semLinha.slice(0,10).join(', ')+(semLinha.length>10?'…':'');
     if(faseInvalida.length) msg+='\n\nFase não reconhecida (linha mantida como estava):\n'+faseInvalida.slice(0,8).join('\n');
@@ -778,13 +795,13 @@ const LEITURA = !!(typeof window!=='undefined' && window.MODO_LEITURA);
 
 function lerHist() {
   if (LEITURA) return (window.DADOS_EMBUTIDOS||{}).hist || [];
-  try { return JSON.parse(localStorage.getItem(SK('hist'))) || []; } catch { return []; }
+  return hist;
 }
 
 function gerarPainelLeitura() {
   if(!csvData.length){ alert('Carregue o CSV antes de gerar o painel para o time.'); return; }
   const agora=new Date();
-  const dados={csv:csvData, acomp:acompRows, ref:csvRef, hist:lerHist(), ger:agora.toISOString()};
+  const dados={csv:csvData, acomp:acompRows, ref:csvRef, hist:lerHist(), ger:agora.toISOString(), unit:window.ACTIVE_UNIT};
 
   const doc=document.documentElement.cloneNode(true);
   // esvazia o que é montado na hora — será reconstruído a partir dos dados
@@ -839,39 +856,185 @@ function encerrarLinha(r) {
 function linhaAtiva(equip) { return acompRows.find(r => r.equip===equip && !r.encerrado); }
 
 // ── STATE ──
-let csvData = [], csvRef = '', acompRows = [];
+let csvData = [], csvRef = '', acompRows = [], hist = [];
 let sortCol = 'dias', sortDir = -1, page = 1, perPage = 100;
 let editingId = null;
 
-// ── STORAGE ──
-function saveAll() {
-  if (LEITURA) return;                 // cópia de leitura nunca grava
-  try {
-  localStorage.setItem(SK('csv'),   JSON.stringify(csvData));
-  localStorage.setItem(SK('acomp'), JSON.stringify(acompRows));
-  localStorage.setItem(SK('ref'),   csvRef);
-  } catch(e) { console.warn('sem acesso ao armazenamento do navegador', e); }
-  const d = document.getElementById('save-dot');
+// ── STORAGE (Supabase) ──
+// Todo o quadro é compartilhado por unidade: quem edita, todo mundo que tem
+// a mesma unidade aberta vê a mudança (ver setupRealtime, mais abaixo).
+function flashSaveDot() {
+  const d = document.getElementById('save-dot'); if (!d) return;
   d.classList.add('show'); setTimeout(() => d.classList.remove('show'), 2000);
 }
-function loadAll() {
+function warnSaveErr(err) {
+  console.error(err);
+  alert('Não consegui salvar no servidor: ' + (err && err.message ? err.message : err));
+}
+
+function toOrderRow(r) {
+  return {
+    unit: window.ACTIVE_UNIT, equip: r.equip, modelo: r.modelo || null, dias: r.dias ?? null,
+    entrada: r.entrada || null, prevista: r.prevista || null, prognostico: r.prognostico || null,
+    motivo_entrada: r.motivoEntrada || null, reforma: !!r.reforma, classe: r.classe || null,
+    descricao: r.descricao || null, exec: r.exec || null, terceiro: !!r.terceiro,
+    agente: r.agente || null, ponto: r.ponto || null, status: r.status || null,
+    situacao: r.situacao || null, serv_enc: !!r.servEnc, updated_at: new Date().toISOString(),
+  };
+}
+function fromOrderRow(row) {
+  return {
+    equip: row.equip, modelo: row.modelo || '', dias: row.dias || 0, entrada: row.entrada || '',
+    prevista: row.prevista || '', prognostico: row.prognostico || '', motivoEntrada: row.motivo_entrada || '',
+    reforma: !!row.reforma, classe: row.classe || '', descricao: row.descricao || '',
+    exec: row.exec || '', terceiro: !!row.terceiro, agente: row.agente || '', ponto: row.ponto || '',
+    status: row.status || '', situacao: row.situacao || '', servEnc: !!row.serv_enc,
+  };
+}
+function toAcompRow(r) {
+  return {
+    id: r.id, unit: window.ACTIVE_UNIT, equip: r.equip, modelo: r.modelo || null,
+    dias: r.dias ?? null, entrada: r.entrada || null, prevista: r.prevista || null,
+    motivo: r.motivo || null, motivo_entrada: r.motivoEntrada || null,
+    reforma: !!r.reforma, classe: r.classe || null, descricao: r.descricao || null,
+    exec: r.exec || null, terceiro: !!r.terceiro, ponto: r.ponto || null,
+    stage: r.stage || null, stage_since: r.stageSince || null,
+    fase_log: Array.isArray(r.faseLog) ? r.faseLog : [],
+    doc: r.doc || null, resp: r.resp || null, prazo: r.prazo || null, obs: r.obs || null,
+    prio: r.prio || null, encerrado: !!r.encerrado, dt_enc: r.dtEnc || null,
+    ciclo_dias: r.cicloDias ?? null, updated_at: new Date().toISOString(),
+  };
+}
+function fromAcompRow(row) {
+  return {
+    id: row.id, equip: row.equip, modelo: row.modelo || '', dias: row.dias || 0,
+    entrada: row.entrada || '', prevista: row.prevista || '', motivo: row.motivo || '',
+    motivoEntrada: row.motivo_entrada || '', reforma: !!row.reforma, classe: row.classe || '',
+    descricao: row.descricao || '', exec: row.exec || '', terceiro: !!row.terceiro,
+    ponto: row.ponto || '', stage: row.stage || '', stageSince: row.stage_since || '',
+    faseLog: Array.isArray(row.fase_log) ? row.fase_log : [], doc: row.doc || '', resp: row.resp || '',
+    prazo: row.prazo || '', obs: row.obs || '', prio: row.prio || '', encerrado: !!row.encerrado,
+    dtEnc: row.dt_enc || null, cicloDias: row.ciclo_dias ?? null,
+  };
+}
+
+async function persistAcompUpsert(row) {
+  if (LEITURA) return;
+  const { error } = await supabaseClient.from('acomp_rows').upsert(toAcompRow(row));
+  if (error) return warnSaveErr(error);
+  flashSaveDot();
+}
+async function persistAcompBulkUpsert(rows) {
+  if (LEITURA || !rows.length) return;
+  const { error } = await supabaseClient.from('acomp_rows').upsert(rows.map(toAcompRow));
+  if (error) return warnSaveErr(error);
+  flashSaveDot();
+}
+async function persistAcompDelete(id) {
+  if (LEITURA) return;
+  const { error } = await supabaseClient.from('acomp_rows').delete().eq('id', id);
+  if (error) return warnSaveErr(error);
+  flashSaveDot();
+}
+async function persistMaintenanceOrdersReplace(rows) {
+  if (LEITURA) return;
+  const unit = window.ACTIVE_UNIT;
+  const { data: existing, error: e0 } = await supabaseClient.from('maintenance_orders').select('equip').eq('unit', unit);
+  if (e0) return warnSaveErr(e0);
+  if (rows.length) {
+    const { error: e1 } = await supabaseClient.from('maintenance_orders')
+      .upsert(rows.map(toOrderRow), { onConflict: 'unit,equip' });
+    if (e1) return warnSaveErr(e1);
+  }
+  const novos = new Set(rows.map(r => r.equip));
+  const remover = (existing || []).map(r => r.equip).filter(eq => !novos.has(eq));
+  if (remover.length) {
+    const { error: e2 } = await supabaseClient.from('maintenance_orders').delete().eq('unit', unit).in('equip', remover);
+    if (e2) return warnSaveErr(e2);
+  }
+  flashSaveDot();
+}
+async function persistUnitState(ref) {
+  if (LEITURA) return;
+  const { error } = await supabaseClient.from('unit_state')
+    .upsert({ unit: window.ACTIVE_UNIT, csv_ref: ref, updated_at: new Date().toISOString() });
+  if (error) return warnSaveErr(error);
+}
+async function persistHistUpsert(entry) {
+  if (LEITURA) return;
+  const { error } = await supabaseClient.from('upload_history')
+    .upsert({ unit: window.ACTIVE_UNIT, d: entry.d, crit: entry.crit, atenc: entry.atenc, total: entry.total },
+            { onConflict: 'unit,d' });
+  if (error) return warnSaveErr(error);
+}
+
+async function loadAll() {
   if (LEITURA) {                       // dados vêm embutidos no arquivo
     const d = window.DADOS_EMBUTIDOS || {};
-    csvData = d.csv || []; acompRows = d.acomp || []; csvRef = d.ref || '';
+    csvData = d.csv || []; acompRows = d.acomp || []; csvRef = d.ref || ''; hist = d.hist || [];
     return;
   }
-  try { csvData   = JSON.parse(localStorage.getItem(SK('csv')))   || []; } catch { csvData=[]; }
-  try { acompRows = JSON.parse(localStorage.getItem(SK('acomp'))) || []; } catch { acompRows=[]; }
-  try { csvRef = localStorage.getItem(SK('ref')) || ''; } catch { csvRef=''; }
+  const unit = window.ACTIVE_UNIT;
+  const [ordersRes, acompRes, histRes, stateRes] = await Promise.all([
+    supabaseClient.from('maintenance_orders').select('*').eq('unit', unit),
+    supabaseClient.from('acomp_rows').select('*').eq('unit', unit),
+    supabaseClient.from('upload_history').select('*').eq('unit', unit).order('d'),
+    supabaseClient.from('unit_state').select('*').eq('unit', unit).maybeSingle(),
+  ]);
+  csvData   = (ordersRes.data || []).map(fromOrderRow);
+  acompRows = (acompRes.data  || []).map(fromAcompRow);
+  hist      = (histRes.data   || []).map(h => ({ d: h.d, crit: h.crit, atenc: h.atenc, total: h.total }));
+  csvRef    = (stateRes.data && stateRes.data.csv_ref) || '';
+
   // Linhas salvas antes desta versão não têm data de fase: começam hoje
-  let mig=false;
-  acompRows.forEach(r=>{
+  const migradas = [];
+  acompRows.forEach(r => {
+    let mig = false;
     if(!r.stageSince){ r.stageSince=hojeISO(); mig=true; }
     if(!Array.isArray(r.faseLog)){ r.faseLog=[]; mig=true; }
     if(docSuspeito(r.doc)){ r.doc=''; mig=true; }
     if(respSuspeito(r.resp, r.equip)){ r.resp=''; mig=true; }
+    if (mig) migradas.push(r);
   });
-  if (mig) saveAll();
+  if (migradas.length) await persistAcompBulkUpsert(migradas);
+}
+
+// ── REALTIME ──
+// Mantém as sessões abertas na mesma unidade em sincronia: qualquer INSERT/
+// UPDATE/DELETE feito por alguém aparece aqui sem precisar recarregar.
+let rtChannel = null;
+function setupRealtime() {
+  const unit = window.ACTIVE_UNIT;
+  rtChannel = supabaseClient.channel('painel-' + unit)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'acomp_rows', filter: 'unit=eq.' + unit }, payload => {
+      const isDel = payload.eventType === 'DELETE';
+      const row = fromAcompRow(isDel ? payload.old : payload.new);
+      acompRows = acompRows.filter(r => r.id !== row.id);
+      if (!isDel) acompRows.push(row);
+      renderAcomp();
+      if (document.getElementById('view-medias').classList.contains('active')) buildMedias();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_orders', filter: 'unit=eq.' + unit }, payload => {
+      const isDel = payload.eventType === 'DELETE';
+      const row = fromOrderRow(isDel ? payload.old : payload.new);
+      csvData = csvData.filter(r => r.equip !== row.equip);
+      if (!isDel) csvData.push(row);
+      refreshAll();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'upload_history', filter: 'unit=eq.' + unit }, payload => {
+      const isDel = payload.eventType === 'DELETE';
+      const d = isDel ? payload.old.d : payload.new.d;
+      hist = hist.filter(h => h.d !== d);
+      if (!isDel) hist.push({ d: payload.new.d, crit: payload.new.crit, atenc: payload.new.atenc, total: payload.new.total });
+      hist.sort((a, b) => a.d.localeCompare(b.d));
+      buildHistChart();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'unit_state', filter: 'unit=eq.' + unit }, payload => {
+      if (payload.eventType === 'DELETE') return;
+      csvRef = payload.new.csv_ref || '';
+      const el = document.getElementById('hd-ref'); if (el) el.textContent = csvRef;
+    })
+    .subscribe();
 }
 
 // ── DATES ──
@@ -922,7 +1085,7 @@ function execCell(r) {
   return esc(r.exec);
 }
 function refGrupo(r) {
-  const m = String(r.prognostico || r.obs || '').toUpperCase().match(/SEB[_ ]([A-Z0-9 ]+?)[_ ]LINEAR/);
+  const m = String(r.prognostico || r.obs || '').toUpperCase().match(/[A-Z]{3}[_ ]([A-Z0-9 ]+?)[_ ]LINEAR/);
   return m ? m[1].trim() : '';
 }
 
@@ -951,8 +1114,11 @@ const critCB    = lv => lv==='crit'?'cb-crit':lv==='atenc'?'cb-atenc':'cb-ok';
 window.addEventListener('DOMContentLoaded', async () => {
   aplicarModoLeitura();
   tick(); setInterval(tick, 1000);
-  loadAll(); refreshAll();
+  await window.authReady;
+  if (!window.ACTIVE_UNIT) return;     // sem sessão válida: já foi redirecionado
+  await loadAll(); refreshAll();
   if (!LEITURA) {
+    setupRealtime();
     await loadOnlineCSV();
     setInterval(loadOnlineCSV, 5 * 60 * 1000);
   }
@@ -979,11 +1145,19 @@ function switchTab(id) {
   rebuildFilters();
   if(id==='medias') buildMedias();
 }
-function resetData() {
-  if (!confirm('Apagar todos os dados salvos desta unidade (quadro de acompanhamento e histórico)?\nEsta ação não pode ser desfeita.')) return;
+async function resetData() {
+  if (!confirm('Apagar os dados desta unidade (quadro de acompanhamento e histórico) PARA TODOS OS USUÁRIOS?\nEsta ação não pode ser desfeita.')) return;
   if (LEITURA) return;
-  ['csv','acomp','ref','hist'].forEach(k => localStorage.removeItem(SK(k)));
-  csvData=[]; acompRows=[]; csvRef='';
+  const unit = window.ACTIVE_UNIT;
+  const [r1,r2,r3,r4] = await Promise.all([
+    supabaseClient.from('maintenance_orders').delete().eq('unit', unit),
+    supabaseClient.from('acomp_rows').delete().eq('unit', unit),
+    supabaseClient.from('upload_history').delete().eq('unit', unit),
+    supabaseClient.from('unit_state').delete().eq('unit', unit),
+  ]);
+  const err = [r1,r2,r3,r4].find(r => r.error);
+  if (err) return warnSaveErr(err.error);
+  csvData=[]; acompRows=[]; csvRef=''; hist=[];
   document.getElementById('hd-ref').textContent='Nenhum CSV carregado';
   refreshAll();
   alert('Reset concluído. Carregue o CSV para começar.');
@@ -1003,7 +1177,7 @@ async function loadOnlineCSV() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     if (!text || text.length < 20 || !text.includes('\n')) throw new Error('CSV vazio ou inválido');
-    parseCSV(text, 'base.csv (Google Drive)');
+    await parseCSV(text, 'base.csv (Google Drive)');
     document.getElementById('hd-ref').textContent = 'Base online · ' + new Date().toLocaleString('pt-BR') + ' · ' + csvData.length + ' OS';
   } catch (err) {
     console.warn('Não foi possível carregar a base online:', err);
@@ -1024,10 +1198,11 @@ function splitLine(line, sep) {
 function handleFile(file) {
   if (!file) return;
   const r = new FileReader();
-  r.onload = e => { parseCSV(e.target.result, file.name); closeUpload(); };
+  r.onload = async e => { await parseCSV(e.target.result, file.name); closeUpload(); };
   r.readAsText(file, 'latin1');
 }
-function parseCSV(text, fname) {
+async function parseCSV(text, fname) {
+  const UNIT_FILTER = UNIT_FILTER_MAP[window.ACTIVE_UNIT] || '';
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return;
   const sep = lines[0].includes(';') ? ';' : ',';
@@ -1127,14 +1302,16 @@ function parseCSV(text, fname) {
   csvRef = fname + ' · ' + now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' · ' + rows.length + ' OS'
          + (faltando.length ? ' · ⚠ sem coluna: ' + faltando.join(', ') : '');
   document.getElementById('hd-ref').textContent = csvRef;
-  syncAcomp();
-  saveAll();
+  await persistMaintenanceOrdersReplace(rows);
+  await persistUnitState(csvRef);
+  await syncAcomp();
   refreshAll();
 }
 
 // ── SYNC ──
-function syncAcomp() {
+async function syncAcomp() {
   const todayStr = new Date().toISOString().slice(0,10);
+  const tocadas = [];
   // Update existing rows
   acompRows.forEach(r => {
     if (r.encerrado) return;              // linha congelada: não volta a ser atualizada
@@ -1153,8 +1330,10 @@ function syncAcomp() {
       r.reforma = f.reforma;
       if (f.reforma && !r.motivo) r.motivo = 'Reforma';
       if (!r.modelo) r.modelo = f.modelo;
+      tocadas.push(r);
     } else {
       encerrarLinha(r);                   // sumiu do CSV = concluída
+      tocadas.push(r);
     }
   });
   // Auto-add new criticals
@@ -1162,7 +1341,7 @@ function syncAcomp() {
   csvData.forEach(r => {
     if (tracked.has(r.equip)) return;
     if (calcCrit(r) !== 'ok') {   // entra tudo que está em Atenção ou Crítico
-      acompRows.push({
+      const nova = {
         id: genId(), equip: r.equip, modelo: r.modelo,
         dias: r.dias, entrada: r.entrada, prevista: r.prevista,
         motivoEntrada: r.motivoEntrada, motivo: r.motivoEntrada, reforma: r.reforma,
@@ -1171,7 +1350,9 @@ function syncAcomp() {
         prio: r.dias >= 15 ? 'alta' : 'media',
         obs: r.prognostico.substring(0,80),
         encerrado: false,
-      });
+      };
+      acompRows.push(nova);
+      tocadas.push(nova);
     }
   });
   // Patch nulls in acompRows from fresh csvData
@@ -1179,21 +1360,30 @@ function syncAcomp() {
     if (r.encerrado) return;
     if (!r.classe || !r.ponto) {
       const f = csvData.find(c => c.equip === r.equip);
-      if (f) { r.classe = f.classe || r.classe || ''; r.ponto = f.ponto || r.ponto || ''; }
+      if (f) {
+        r.classe = f.classe || r.classe || ''; r.ponto = f.ponto || r.ponto || '';
+        if (!tocadas.includes(r)) tocadas.push(r);
+      }
     }
   });
-  saveHistSnap(todayStr);
+  await persistAcompBulkUpsert(tocadas);
+  await saveHistSnap(todayStr);
 }
 
-function saveHistSnap(dateStr) {
-  let hist = [];
-  hist = lerHist();
+async function saveHistSnap(dateStr) {
   if (hist.length && hist[hist.length-1].d === dateStr) hist.pop();
   const crit  = csvData.filter(r => calcCrit(r) === 'crit').length;
   const atenc = csvData.filter(r => calcCrit(r) === 'atenc').length;
-  hist.push({d:dateStr, crit, atenc, total:csvData.length});
-  if (hist.length > 60) hist = hist.slice(-60);
-  if (!LEITURA) localStorage.setItem(SK('hist'), JSON.stringify(hist));
+  const entry = { d: dateStr, crit, atenc, total: csvData.length };
+  hist.push(entry);
+  await persistHistUpsert(entry);
+  if (hist.length > 60) {
+    const antigos = hist.slice(0, hist.length - 60).map(h => h.d);
+    hist = hist.slice(-60);
+    if (!LEITURA && antigos.length) {
+      await supabaseClient.from('upload_history').delete().eq('unit', window.ACTIVE_UNIT).in('d', antigos);
+    }
+  }
 }
 
 // ── FILTERS ──
@@ -1444,7 +1634,7 @@ function importCritical() {
   if(!cands.length){alert('Nenhum equipamento novo para importar.');return;}
   const nC=cands.filter(r=>calcCrit(r)==='crit').length;
   if(!confirm('Importar '+cands.length+' equipamentos? ('+nC+' críticos e '+(cands.length-nC)+' em atenção)'))return;
-  cands.forEach(r=>acompRows.push({
+  const novas = cands.map(r=>({
     id:genId(), equip:r.equip, modelo:r.modelo,
     dias:r.dias, entrada:r.entrada, prevista:r.prevista,
     motivo:r.motivoEntrada, motivoEntrada:r.motivoEntrada,
@@ -1455,7 +1645,8 @@ function importCritical() {
     exec:r.exec, terceiro:r.terceiro,
     encerrado:false,
   }));
-  saveAll(); renderAcomp();
+  acompRows.push(...novas);
+  persistAcompBulkUpsert(novas); renderAcomp();
 }
 
 function limparAcomp() {
@@ -1561,8 +1752,8 @@ function renderAcomp() {
 }
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
-function delRow(id){if(!confirm('Remover este equipamento do quadro?'))return;acompRows=acompRows.filter(r=>r.id!==id);saveAll();renderAcomp();}
-function setPrio(btn,prio){const r=acompRows.find(r=>r.id===btn.dataset.id);if(r){r.prio=r.prio===prio?'':prio;saveAll();renderAcomp();}}
+function delRow(id){if(!confirm('Remover este equipamento do quadro?'))return;acompRows=acompRows.filter(r=>r.id!==id);persistAcompDelete(id);renderAcomp();}
+function setPrio(btn,prio){const r=acompRows.find(r=>r.id===btn.dataset.id);if(r){r.prio=r.prio===prio?'':prio;persistAcompUpsert(r);renderAcomp();}}
 function toggleStage(btn){event.stopPropagation();const dd=document.getElementById('sd-'+btn.dataset.id);if(!dd)return;const w=dd.classList.contains('open');document.querySelectorAll('.stage-drop').forEach(d=>d.classList.remove('open'));if(!w)dd.classList.add('open');}
 function setStage(el){
   const r=acompRows.find(r=>r.id===el.dataset.id); if(!r) return;
@@ -1573,9 +1764,9 @@ function setStage(el){
     r.stage=nova;
     r.stageSince=hojeISO();
   }
-  saveAll(); renderAcomp();
+  persistAcompUpsert(r); renderAcomp();
 }
-function upd(el){const r=acompRows.find(r=>r.id===el.dataset.id);if(r){r[el.dataset.field]=el.value;saveAll();}}
+function upd(el){const r=acompRows.find(r=>r.id===el.dataset.id);if(r){r[el.dataset.field]=el.value;persistAcompUpsert(r);}}
 
 // ── IMPORTAÇÃO DA PLANILHA DE TERCEIROS (BASE_TC) ──
 // A coluna Status_Serv da planilha já é a fase; o mapa abaixo traduz
@@ -1749,6 +1940,7 @@ function fecharImport(){ document.getElementById('imp-modal').classList.remove('
 
 function confirmarImportTerc() {
   const p=impPendente; if(!p) return;
+  const tocadas=[];
   p.aplicar.forEach(x=>{
     const csv=csvData.find(r=>r.equip===x.frota);
     let r=linhaAtiva(x.frota);
@@ -1770,8 +1962,9 @@ function confirmarImportTerc() {
     if(!r.resp || respSuspeito(r.resp, r.equip))  r.resp = x.solicitante||'';
     if(!r.obs)  r.obs  = String(x.escopo||'').substring(0,80);
     r.setNum=x.set;
+    tocadas.push(r);
   });
-  saveAll(); fecharImport(); switchTab('acomp'); renderAcomp();
+  persistAcompBulkUpsert(tocadas); fecharImport(); switchTab('acomp'); renderAcomp();
 }
 
 // ── DETALHE DA FROTA ──
@@ -2073,9 +2266,11 @@ function saveModal(){
     obs:      document.getElementById('m-obs').value.trim(),
     encerrado:false,
   };
-  if(editingId){const r=acompRows.find(r=>r.id===editingId);if(r)Object.assign(r,data);}
-  else acompRows.push({id:genId(), stageSince:hojeISO(), faseLog:[], ...data});
-  saveAll();renderAcomp();closeModal();
+  let row;
+  if(editingId){ row=acompRows.find(r=>r.id===editingId); if(row) Object.assign(row,data); }
+  else { row={id:genId(), stageSince:hojeISO(), faseLog:[], ...data}; acompRows.push(row); }
+  if(row) persistAcompUpsert(row);
+  renderAcomp();closeModal();
 }
 </script>
 </body>

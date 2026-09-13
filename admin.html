@@ -99,8 +99,8 @@
   <div class="card">
     <h2>Abrir painéis</h2>
     <div class="dashboards-row">
-      <a href="painel.html" target="_blank"><button>Sebastianópolis ↗</button></a>
-      <a href="painel_meridiano.html" target="_blank"><button>Meridiano ↗</button></a>
+      <a href="painel.html?unit=sebastianopolis" target="_blank"><button>Sebastianópolis ↗</button></a>
+      <a href="painel.html?unit=meridiano" target="_blank"><button>Meridiano ↗</button></a>
     </div>
   </div>
 
@@ -127,11 +127,7 @@
   const LOGIN_URL = new URL("index.html", window.location.href).toString();
   const APP_URL = new URL("app.html", window.location.href).toString();
 
-  const UNIT_LABELS = {
-    sebastianopolis: "Sebastianópolis",
-    meridiano: "Meridiano",
-  };
-
+  // UNIT_LABELS comes from config.js
   const tbody = document.getElementById("users-tbody");
   const table = document.getElementById("users-table");
   const loadingMsg = document.getElementById("loading-msg");
