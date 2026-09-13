@@ -1534,7 +1534,7 @@ function buildCritSection() {
     const isRef=isReforma(r);
     const pct=isRef?reformaPct(r.entrada,r.prevista):null;
     const tag=isRef&&pct!==null?pct+'% DO PRAZO':r.dias+'D PARADO';
-    return '<div class="crit-card lv-'+lv+'" style="cursor:pointer" title="'+esc(resumoFrota(r))+'" onclick="abrirDetalhe(\''+esc(r.equip)+'\')"><div class="cc-dias">'+r.dias+'d</div><div class="cc-equip">'+r.equip+'</div><div class="cc-modelo">'+r.modelo+'</div><div class="cc-tag" style="color:'+(isRef?'var(--cyan)':critColor(lv))+'">'+tag+'</div></div>';
+    return '<div class="crit-card lv-'+lv+'" style="cursor:pointer" title="'+esc(resumoFrota(r))+'" onclick="abrirDetalhe(\''+esc(r.equip)+'\')"><div class="cc-dias">'+r.dias+'d</div><div class="cc-equip">'+esc(r.equip)+'</div><div class="cc-modelo">'+esc(r.modelo)+'</div><div class="cc-tag" style="color:'+(isRef?'var(--cyan)':critColor(lv))+'">'+tag+'</div></div>';
   };
   const bloco=(lv,titulo,estilo)=>{
     const todos=[...d].filter(r=>calcCrit(r)===lv).sort((a,b)=>sevScore(b)-sevScore(a));
@@ -1629,8 +1629,8 @@ function renderTable() {
       '<td style="font-size:11px;white-space:nowrap">'+(r.servEnc
           ? '<span style="color:var(--purple);font-weight:700">● Serv. encerrado</span>'
           : '<span style="color:var(--muted)">'+esc(r.situacao||'—')+'</span>')+'</td>'+
-      '<td style="font-size:11px;color:var(--muted)">'+String(r.entrada).split(' ')[0]+'</td>'+
-      '<td style="font-size:11px;color:'+(isVencido(r.prevista)?'var(--red)':'var(--text)')+'">'+String(r.prevista).split(' ')[0]+'</td>'+
+      '<td style="font-size:11px;color:var(--muted)">'+esc(String(r.entrada).split(' ')[0])+'</td>'+
+      '<td style="font-size:11px;color:'+(isVencido(r.prevista)?'var(--red)':'var(--text)')+'">'+esc(String(r.prevista).split(' ')[0])+'</td>'+
       '<td style="font-size:11px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" data-tip="'+esc(tip)+'">'+esc(String(r.prognostico).substring(0,55))+(String(r.prognostico).length>55?'…':'')+'</td>'+
     '</tr>';
   }).join('');
@@ -1742,13 +1742,13 @@ function renderAcomp() {
 
     return '<tr style="'+bl+'">'+
       '<td><button class="del-btn" data-id="'+r.id+'" onclick="delRow(this.dataset.id)">✕</button></td>'+
-      '<td style="font-family:monospace;font-weight:700;font-size:12px">'+r.equip+(r.encerrado?'<br><span style="font-size:9px;color:var(--muted);font-weight:400">encerrada</span>':'')+'</td>'+
-      '<td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+r.modelo+'">'+r.modelo+'</td>'+
+      '<td style="font-family:monospace;font-weight:700;font-size:12px">'+esc(r.equip)+(r.encerrado?'<br><span style="font-size:9px;color:var(--muted);font-weight:400">encerrada</span>':'')+'</td>'+
+      '<td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(r.modelo)+'">'+esc(r.modelo)+'</td>'+
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap">'+esc(r.classe||'—')+'</td>'+
       '<td style="font-size:11px;color:var(--muted);white-space:nowrap" title="'+esc(r.descricao||'')+'">'+esc(r.descricao||'—')+'</td>'+
       '<td style="font-size:11px;white-space:nowrap">'+execCell(r)+'</td>'+
-      '<td style="font-size:11px;color:var(--muted);white-space:nowrap">'+(r.ponto||'—')+'</td>'+
-      '<td><span style="font-size:11px;'+(isRef?'color:var(--cyan);font-weight:700':'color:var(--muted)')+'">'+motStr+'</span></td>'+
+      '<td style="font-size:11px;color:var(--muted);white-space:nowrap">'+esc(r.ponto||'—')+'</td>'+
+      '<td><span style="font-size:11px;'+(isRef?'color:var(--cyan);font-weight:700':'color:var(--muted)')+'">'+esc(motStr)+'</span></td>'+
       '<td style="font-weight:800;color:'+(r.encerrado?'var(--muted)':critColor(lv))+'" title="'+(r.dias||0)+' dias parado'+(r.encerrado?' · concluída':lv==='crit'?' · crítico':lv==='atenc'?' · atenção':'')+'">'+(isRef&&pct!==null&&!r.encerrado?pct+'%':(r.dias||0)+'d')+'</td>'+
       '<td><div class="stage-wrap">'+
         '<div class="stage-pill" style="background:'+st.color+'22;color:'+st.color+';border-color:'+st.color+'55" data-id="'+r.id+'" onclick="toggleStage(this)">'+
