@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Painel</title>
+<title>Acesso</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -70,8 +70,8 @@
 </header>
 <main>
   <div class="card">
-    <h1>Bem-vindo</h1>
-    <p>Voc&ecirc; est&aacute; autenticado. Substitua este conte&uacute;do pelo restante da sua aplica&ccedil;&atilde;o.</p>
+    <h1 id="status-title">Verificando acesso&hellip;</h1>
+    <p id="status-text">Aguarde um instante.</p>
   </div>
 </main>
 
@@ -79,14 +79,37 @@
 <script src="config.js"></script>
 <script>
   const LOGIN_URL = new URL("index.html", window.location.href).toString();
+  const ADMIN_URL = new URL("admin.html", window.location.href).toString();
 
   (async () => {
     const { data } = await supabaseClient.auth.getSession();
-    if (!data.session) {
+    const session = data.session;
+    if (!session) {
       window.location.href = LOGIN_URL;
       return;
     }
-    document.getElementById("user-email").textContent = data.session.user.email;
+    document.getElementById("user-email").textContent = session.user.email;
+
+    if (session.user.email === ADMIN_EMAIL) {
+      window.location.href = ADMIN_URL;
+      return;
+    }
+
+    const { data: profile, error } = await supabaseClient
+      .from("profiles")
+      .select("unit")
+      .eq("id", session.user.id)
+      .single();
+
+    const page = !error && profile && UNIT_PAGES[profile.unit];
+    if (page) {
+      window.location.href = new URL(page, window.location.href).toString();
+      return;
+    }
+
+    document.getElementById("status-title").textContent = "Aguardando liberação";
+    document.getElementById("status-text").textContent =
+      "Sua conta ainda não tem uma unidade associada. Fale com o administrador para liberar seu acesso.";
   })();
 
   supabaseClient.auth.onAuthStateChange((event) => {

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Administração</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f5f7;
+    --card-bg: #ffffff;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --border: #d2d2d7;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --error-bg: #fdecea;
+    --error-text: #b3261e;
+    --success-text: #1e7e34;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f11;
+      --card-bg: #1c1c1e;
+      --text: #f5f5f7;
+      --muted: #a1a1a6;
+      --border: #3a3a3c;
+      --error-bg: #3a1f1f;
+      --error-text: #ff6b6b;
+      --success-text: #5fd77c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header span { color: var(--muted); font-size: 0.9rem; }
+  button, select {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { background: var(--accent-hover); }
+  main {
+    max-width: 860px;
+    margin: 40px auto;
+    padding: 0 24px 48px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 24px; font-size: 0.9rem; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .card h2 { margin: 0 0 16px; font-size: 1.05rem; }
+  .dashboards-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.saved-flag { width: 90px; font-size: 0.8rem; color: var(--success-text); }
+  td.error-flag { width: 90px; font-size: 0.8rem; color: var(--error-text); }
+  .empty, .loading { color: var(--muted); font-size: 0.9rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <strong>Administração de acessos</strong>
+  <div>
+    <span id="user-email"></span>
+    <button id="logout-btn" style="margin-left: 12px;">Sair</button>
+  </div>
+</header>
+
+<main>
+  <h1>Usuários e unidades</h1>
+  <p class="subtitle">Defina qual painel cada usuário pode abrir. Para criar um novo usuário, convide-o pelo painel do Supabase; ele aparecerá aqui automaticamente.</p>
+
+  <div class="card">
+    <h2>Abrir painéis</h2>
+    <div class="dashboards-row">
+      <a href="painel.html" target="_blank"><button>Sebastianópolis ↗</button></a>
+      <a href="painel_meridiano.html" target="_blank"><button>Meridiano ↗</button></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Usuários</h2>
+    <p class="loading" id="loading-msg">Carregando usuários&hellip;</p>
+    <p class="empty" id="empty-msg" hidden>Nenhum usuário encontrado ainda.</p>
+    <table id="users-table" hidden>
+      <thead>
+        <tr>
+          <th>E-mail</th>
+          <th>Unidade</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+  const LOGIN_URL = new URL("index.html", window.location.href).toString();
+  const APP_URL = new URL("app.html", window.location.href).toString();
+
+  const UNIT_LABELS = {
+    sebastianopolis: "Sebastianópolis",
+    meridiano: "Meridiano",
+  };
+
+  const tbody = document.getElementById("users-tbody");
+  const table = document.getElementById("users-table");
+  const loadingMsg = document.getElementById("loading-msg");
+  const emptyMsg = document.getElementById("empty-msg");
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  function unitSelectHtml(currentUnit) {
+    const opts = ['<option value="">Sem unidade</option>'];
+    for (const key in UNIT_LABELS) {
+      const selected = key === currentUnit ? "selected" : "";
+      opts.push(`<option value="${key}" ${selected}>${UNIT_LABELS[key]}</option>`);
+    }
+    return opts.join("");
+  }
+
+  function renderRows(profiles) {
+    if (!profiles.length) {
+      emptyMsg.hidden = false;
+      table.hidden = true;
+      return;
+    }
+    emptyMsg.hidden = true;
+    table.hidden = false;
+    tbody.innerHTML = "";
+    for (const profile of profiles) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(profile.email)}</td>
+        <td><select data-id="${profile.id}">${unitSelectHtml(profile.unit)}</select></td>
+        <td class="status-cell"></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadProfiles() {
+    const { data, error } = await supabaseClient
+      .from("profiles")
+      .select("id, email, unit")
+      .order("email");
+    loadingMsg.hidden = true;
+    if (error) {
+      emptyMsg.hidden = false;
+      emptyMsg.textContent = "Erro ao carregar usuários: " + error.message;
+      return;
+    }
+    renderRows(data);
+  }
+
+  tbody.addEventListener("change", async (e) => {
+    const select = e.target.closest("select[data-id]");
+    if (!select) return;
+    const id = select.dataset.id;
+    const unit = select.value || null;
+    const statusCell = select.closest("tr").querySelector(".status-cell");
+    select.disabled = true;
+    statusCell.textContent = "Salvando…";
+    statusCell.className = "status-cell saved-flag";
+    const { error } = await supabaseClient.from("profiles").update({ unit }).eq("id", id);
+    select.disabled = false;
+    if (error) {
+      statusCell.textContent = "Erro ao salvar";
+      statusCell.className = "status-cell error-flag";
+    } else {
+      statusCell.textContent = "Salvo ✓";
+      statusCell.className = "status-cell saved-flag";
+      setTimeout(() => { statusCell.textContent = ""; }, 2000);
+    }
+  });
+
+  (async () => {
+    const { data } = await supabaseClient.auth.getSession();
+    const session = data.session;
+    if (!session) {
+      window.location.href = LOGIN_URL;
+      return;
+    }
+    if (session.user.email !== ADMIN_EMAIL) {
+      window.location.href = APP_URL;
+      return;
+    }
+    document.getElementById("user-email").textContent = session.user.email;
+    await loadProfiles();
+  })();
+
+  supabaseClient.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT") window.location.href = LOGIN_URL;
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+  });
+</script>
+</body>
+</html>
