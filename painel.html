@@ -187,6 +187,7 @@ body.leitura .stage-pill span:last-child{display:none}
     <div class="hd-unit" id="hd-unit">Un.</div>
   </div>
   <div class="hd-btns">
+    <select id="unit-switcher" hidden onchange="trocarUnidade(this.value)" class="pill" style="padding:7px 10px"></select>
     <div class="pill" onclick="openUpload()">📂 Atualizar CSV <span id="save-dot"></span></div>
     <div class="pill" onclick="toggleFS()" id="fs-btn">⛶ Tela cheia</div>
     <div class="pill" onclick="resetData()" style="border-color:rgba(239,68,68,.4);color:var(--red)">🗑 Reset</div>
@@ -212,6 +213,20 @@ body.leitura .stage-pill span:last-child{display:none}
     document.title = 'COFCO INTL · Manutenção · ' + label;
     const hd = document.getElementById('hd-unit'); if (hd) hd.textContent = 'Un. ' + label;
     const up = document.getElementById('upload-unit-label'); if (up) up.textContent = 'Un. ' + label;
+  }
+
+  window.trocarUnidade = function(unit) {
+    if (!UNIT_LABELS[unit] || unit === window.ACTIVE_UNIT) return;
+    window.location.href = 'painel.html?unit=' + unit;
+  };
+
+  function setupUnitSwitcher(activeUnit) {
+    const sel = document.getElementById('unit-switcher');
+    if (!sel) return;
+    sel.innerHTML = Object.keys(UNIT_LABELS).map((key) =>
+      `<option value="${key}" ${key === activeUnit ? 'selected' : ''}>${UNIT_LABELS[key]}</option>`
+    ).join('');
+    sel.hidden = false;
   }
 
   // Resolvida antes de qualquer leitura/gravação de dados — o resto do
@@ -243,6 +258,7 @@ body.leitura .stage-pill span:last-child{display:none}
 
     document.getElementById('user-email-pill').textContent = session.user.email;
     applyUnitChrome(window.ACTIVE_UNIT);
+    if (isAdmin && !window.MODO_LEITURA) setupUnitSwitcher(window.ACTIVE_UNIT);
     document.documentElement.classList.remove('auth-pending');
   })();
 
