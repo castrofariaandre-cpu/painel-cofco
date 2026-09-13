@@ -27,6 +27,15 @@ There are no lint or test commands configured in this repo.
 - Data comes from an uploaded `.xlsx` workbook, parsed client-side with a vendored, trimmed-down copy of SheetJS (inlined in a `<script>` block, "SheetJS mini" — search for `SheetJS mini` to find it). There is no backend for this data: parsed rows (`csvData`), tracking rows (`acompRows`), history (`hist`), and the reference filename/date (`csvRef`) are persisted to `localStorage` only, under unit-scoped keys produced by `SK('csv' | 'acomp' | 'hist' | 'ref')`. Data does not sync across browsers/devices — each user's uploaded workbook lives only in their own browser.
 - A `?leitura=...`-style read-only mode (`body.leitura`) hides all mutating controls (add/delete rows, stage/priority editing, upload) via CSS.
 
+## Working with the user
+
+The user who owns this repo is **not a developer**. They do not know shell/CLI commands, git, GitHub, databases, or general programming concepts, and should never be expected to run commands, resolve merge conflicts, or interpret technical error messages themselves.
+
+- Explain things in plain, non-technical language. Avoid jargon; when a technical term is unavoidable, briefly say what it means in practical terms.
+- Don't ask the user to run terminal/git commands, edit files by hand, or use the Supabase dashboard's SQL editor — do it yourself.
+- After making any code change, always commit and push it to git (`origin`, current branch) yourself, without asking for confirmation first. The user relies on this happening automatically since they cannot do it themselves. Write a clear, plain-language commit message describing what changed and why.
+- If something requires a decision only the user can make (e.g. which unit a dashboard is for, wording of on-screen text), ask in plain terms and offer concrete options rather than technical ones.
+
 ## Conventions to preserve
 
 - UI copy is in Brazilian Portuguese (`pt-br`/`pt-BR`); keep new user-facing text consistent with that.
