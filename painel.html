@@ -1717,9 +1717,10 @@ function renderAcomp() {
   const fBu=((document.getElementById('f-search-ac')||{}).value||'').toLowerCase().trim();
   const prioOrd={alta:0,media:1,baixa:2,'':3};
   const lvOrd={crit:0,atenc:1,ok:2};
-  const passa=r=>(!fCL||r.classe===fCL)&&(!fP||r.ponto===fP)&&(!fFa||r.stage===fFa)
+  // mesmas regras de linhasAcompVisiveis() — tabela e "Excel do recorte" têm que bater
+  const passa=r=>(!fCL||r.classe===fCL)&&(!fPR||r.descricao===fPR)&&(!fP||r.ponto===fP)&&(!fFa||r.stage===fFa)
       &&(fEx==='__terc'?r.terceiro:(!fEx||r.exec===fEx))
-      &&(!fBu||[r.equip,r.modelo,r.doc,r.resp,r.obs,r.exec,r.classe]
+      &&(!fBu||[r.equip,r.modelo,r.doc,r.resp,r.obs,r.exec,r.classe,r.descricao]
           .some(v=>String(v||'').toLowerCase().includes(fBu)));
   const concl=acompRows.filter(r=>r.encerrado&&passa(r))
     .sort((a,b)=>String(b.dtEnc||'').localeCompare(String(a.dtEnc||'')));
